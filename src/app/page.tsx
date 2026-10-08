@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { StartExperimentButton } from "@/components/StartExperimentButton";
 
 const consentPoints = [
   "Saya memahami bahwa eksperimen ini berlangsung 40 menit dengan timer global yang tidak dapat dijeda.",
@@ -27,10 +27,7 @@ export default function LoginPage() {
             </li>
           ))}
         </ul>
-        <Link href="/step-1-scenario" className="btn-primary mt-8 w-full">
-          Mulai Eksperimen
-          <span aria-hidden="true">→</span>
-        </Link>
+        <StartExperimentButton />
       </section>
     </main>
   );
