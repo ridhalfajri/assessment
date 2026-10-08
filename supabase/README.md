@@ -76,9 +76,11 @@ docker run -d --name pg-experiment -e POSTGRES_PASSWORD=postgres postgres:16
 docker cp supabase/migrations/0001_init.sql pg-experiment:/tmp/
 docker cp supabase/migrations/0002_submit_survey_rpc.sql pg-experiment:/tmp/
 docker cp supabase/migrations/0003_manipulation_check.sql pg-experiment:/tmp/
+docker cp supabase/migrations/0004_integrity_hardening.sql pg-experiment:/tmp/
 docker exec pg-experiment psql -U postgres -f /tmp/0001_init.sql
 docker exec pg-experiment psql -U postgres -f /tmp/0002_submit_survey_rpc.sql
 docker exec pg-experiment psql -U postgres -f /tmp/0003_manipulation_check.sql
+docker exec pg-experiment psql -U postgres -f /tmp/0004_integrity_hardening.sql
 
 # 3. Cek hasil (opsional)
 docker exec pg-experiment psql -U postgres -c "\dt public.*"

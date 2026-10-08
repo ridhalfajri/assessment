@@ -169,6 +169,8 @@ role di server saja.
 | `200` | `{ status: "created", sessionId, participantId }` | Submit baru berhasil tersimpan. |
 | `200` | `{ status: "already_submitted", sessionId, participantId }` | Idempoten — submit ulang dengan `participantId` sama tidak menduplikasi baris (aman untuk retry/refresh/timeout auto-submit). |
 | `400` | `{ error, details: [{ path, message }] }` | Payload invalid/tampered; tidak ada insert yang dieksekusi. |
+| `413` | `{ error }` | Ukuran body melebihi batas 128 KB (payload sah < 10 KB) — BETE-13. |
+| `429` | `{ error }` | Terlalu banyak request dari IP yang sama (30 / 5 menit; header `Retry-After` berisi detik tunggu) — BETE-13. |
 | `500` | `{ error }` | Kesalahan internal (pesan umum; detail di log server). |
 
 **Bentuk payload** (JSON, camelCase — detail validasi di `src/lib/submit-survey.ts`):
@@ -196,7 +198,8 @@ role di server saja.
     "age": 28, "gender": "Laki-laki", "education": "S1",
     "affiliation": "KAP Sejahtera",          // dari form demografi (kolom NOT NULL)
     "phoneNumber": "081234567890"            // format Indonesia: 08xx/62xx/+62xx
-  }
+  },
+  "isComplete": true                         // false HANYA dari auto-submit timer habis (default true)
 }
 ```
 

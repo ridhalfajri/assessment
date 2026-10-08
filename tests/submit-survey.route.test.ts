@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { getSupabaseAdminClient } from "@/lib/supabase";
 import { POST } from "@/app/api/submit-survey/route";
+import { resetRateLimitsForTests } from "@/lib/rate-limit";
 import { buildValidPayload } from "./helpers/payload";
 
 vi.mock("@/lib/supabase", () => ({
@@ -9,10 +10,10 @@ vi.mock("@/lib/supabase", () => ({
 
 const rpcMock = vi.fn();
 
-function postRequest(body: string): Request {
+function postRequest(body: string, headers: Record<string, string> = {}): Request {
   return new Request("http://localhost:3000/api/submit-survey", {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...headers },
     body,
   });
 }
@@ -20,6 +21,7 @@ function postRequest(body: string): Request {
 beforeEach(() => {
   rpcMock.mockReset();
   (getSupabaseAdminClient as Mock).mockReturnValue({ rpc: rpcMock });
+  resetRateLimitsForTests();
 });
 
 describe("POST /api/submit-survey", () => {
@@ -78,6 +80,44 @@ describe("POST /api/submit-survey", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.status).toBe("already_submitted");
+  });
+
+  it("body melebihi 128 KB → 413 tanpa menyentuh RPC (BETE-13)", async () => {
+    const oversized = JSON.stringify({ filler: "x".repeat(200_000) });
+
+    const res = await POST(postRequest(oversized));
+
+    expect(res.status).toBe(413);
+    expect((await res.json()).error).toContain("batas");
+    expect(rpcMock).not.toHaveBeenCalled();
+  });
+
+  it("request ke-31 dari IP yang sama dalam jendela → 429 dengan Retry-After (BETE-13)", async () => {
+    // 30 request pertama lolos rate limit (body invalid JSON → 400, tetap
+    // dihitung — spam protection), request ke-31 ditolak.
+    const headers = { "x-forwarded-for": "10.0.0.1" };
+    for (let i = 0; i < 30; i += 1) {
+      const res = await POST(postRequest("bukan-json", headers));
+      expect(res.status).toBe(400);
+    }
+
+    const blocked = await POST(
+      postRequest(JSON.stringify(buildValidPayload()), headers),
+    );
+
+    expect(blocked.status).toBe(429);
+    expect(Number(blocked.headers.get("retry-after"))).toBeGreaterThan(0);
+    expect(rpcMock).not.toHaveBeenCalled();
+  });
+
+  it("IP berbeda tidak terpengaruh limit IP lain (BETE-13)", async () => {
+    for (let i = 0; i < 30; i += 1) {
+      await POST(postRequest("bukan-json", { "x-forwarded-for": "10.0.0.1" }));
+    }
+
+    const res = await POST(postRequest("bukan-json", { "x-forwarded-for": "10.0.0.2" }));
+
+    expect(res.status).toBe(400);
   });
 
   it("body bukan JSON → 400, RPC tidak dipanggil", async () => {

@@ -35,7 +35,7 @@ if [ "$(docker inspect -f '{{.State.Running}}' "$PG_NAME" 2>/dev/null)" != "true
 fi
 
 # --- Migrasi (idempoten) ------------------------------------------------------
-for f in 0001_init.sql 0002_submit_survey_rpc.sql 0003_manipulation_check.sql; do
+for f in 0001_init.sql 0002_submit_survey_rpc.sql 0003_manipulation_check.sql 0004_integrity_hardening.sql; do
   docker cp "supabase/migrations/$f" "$PG_NAME:/tmp/$f" >/dev/null
   docker exec "$PG_NAME" psql -U postgres -q -f "/tmp/$f" 2>/dev/null
 done
@@ -92,6 +92,9 @@ cat > .env.local <<EOF
 NEXT_PUBLIC_SUPABASE_URL=http://localhost:$GW_HOST_PORT
 NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY
 SUPABASE_SERVICE_ROLE=$SERVICE_KEY
+# Suite e2e menembak banyak submit dari satu IP localhost — naikkan kuota
+# rate limit (produksi tetap default 30/5 menit per IP).
+RATE_LIMIT_MAX_REQUESTS=100000
 EOF
 chmod 600 .env.local
 echo ".env.local ditulis (kredensial lokal, tidak di-commit)."
