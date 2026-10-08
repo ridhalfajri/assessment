@@ -30,6 +30,30 @@ npm run dev                  # buka http://localhost:3000
 | `npm run build`| Build produksi                            |
 | `npm run start`| Menjalankan hasil build produksi          |
 | `npm run lint` | ESLint                                    |
+| `npm run test` | Unit test (Vitest) — random assignment, matematika timer, reducer, persistensi |
+
+## Engine Eksperimen (BETE-6)
+
+Integritas data eksperimen dijaga oleh mesin state di `src/lib/experiment.ts`
+(murni & teruji) plus tiga komponen klien:
+
+- **State & persistensi** (`src/context/ExperimentContext.tsx`): state
+  `{ sessionData, caseLogs, recommendations, questionnaire, demographics }`
+  dipersist write-through ke **sessionStorage dan localStorage**
+  (kunci `experiment.state.v1`) dan direhidrasi otomatis saat mount — F5 tidak
+  menghilangkan data maupun sisa waktu.
+- **Timer anti-drift**: yang disimpan adalah **deadline absolut**
+  (`sessionData.deadlineTimestamp`), bukan sisa detik; sisa waktu selalu
+  dihitung ulang dari jam dinding. Saat mencapai 00:00: input dikunci
+  (status `expired`), data terisi di-auto-submit dengan flag `isComplete: false`
+  (best-effort), lalu diarahkan ke `/debriefing`.
+- **Random assignment**: `assignTreatmentGroup()` mengacak grup 1–4 secara
+  merata, dipanggil tepat sekali saat submit informed consent, dan dikunci —
+  tidak ada action yang bisa mengubah `treatmentGroupId` setelahnya.
+- **Navigasi satu arah** (`src/components/AntiCheatGuard.tsx`): traversal
+  back/forward dicegah via Navigation API (`beforenavigate`) dengan fallback
+  popstate yang memaksa maju, `beforeunload` aktif selama eksperimen berjalan
+  dan nonaktif setelah submit final, serta langkah tidak pernah mundur.
 
 ### Variabel Lingkungan
 

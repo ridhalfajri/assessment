@@ -1,90 +1,72 @@
 "use client";
 
-import { createContext, useContext, useMemo, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useReducer,
+  type Dispatch,
+} from "react";
+import {
+  createInitialExperimentState,
+  experimentReducer,
+  loadPersistedState,
+  persistState,
+  type ExperimentAction,
+  type ExperimentState,
+  type StorageLike,
+} from "@/lib/experiment";
 
-// TODO(BETE-6): engine lengkap — persistensi ke sessionStorage/localStorage,
-// random assignment treatment group 1-4 saat login, dan global countdown.
-
-export type SessionData = {
-  /** Diisi setelah login (BETE-8). */
-  participantId: string | null;
-  /** 1-4, diacak saat partisipan mulai eksperimen (BETE-8). */
-  treatmentGroupId: number | null;
-  /** Sisa waktu global dalam detik; mulai dari 2400 (40 menit). */
-  globalTimeRemaining: number;
-  currentStep: number;
-};
-
-export type CaseLog = {
-  caseId: number;
-  durationSeconds: number;
-  isSaved: boolean;
-  rank: number | null;
-};
-
-export type Recommendations = {
-  knowHowFee: number | null;
-  entertainment: number | null;
-  maintenance: number | null;
-  marketing: number | null;
-  confidenceLevel: number | null;
-};
-
-export type Questionnaire = {
-  q1: string | null;
-  q2: string | null;
-  q3: string | null;
-};
-
-export type Demographics = {
-  age: number | null;
-  gender: string | null;
-  education: string | null;
-  phoneNumber: string | null;
-};
-
-export type ExperimentState = {
-  sessionData: SessionData;
-  caseLogs: CaseLog[];
-  recommendations: Recommendations;
-  questionnaire: Questionnaire;
-  demographics: Demographics;
-};
-
-const initialState: ExperimentState = {
-  sessionData: {
-    participantId: null,
-    treatmentGroupId: null,
-    globalTimeRemaining: 40 * 60,
-    currentStep: 0,
-  },
-  caseLogs: [],
-  recommendations: {
-    knowHowFee: null,
-    entertainment: null,
-    maintenance: null,
-    marketing: null,
-    confidenceLevel: null,
-  },
-  questionnaire: { q1: null, q2: null, q3: null },
-  demographics: {
-    age: null,
-    gender: null,
-    education: null,
-    phoneNumber: null,
-  },
-};
+/**
+ * Provider state eksperimen (BETE-6): memakai reducer murni di
+ * src/lib/experiment.ts, rehidrasi otomatis dari sessionStorage + localStorage
+ * saat mount, dan write-through persistence setiap perubahan state.
+ */
 
 type ExperimentContextValue = {
   state: ExperimentState;
-  setState: React.Dispatch<React.SetStateAction<ExperimentState>>;
+  dispatch: Dispatch<ExperimentAction>;
+  /** True setelah upaya rehidrasi selesai; dipakai guard anti-cheat agar tidak
+   * mengambil keputusan dari state kosong sebelum storage terbaca. */
+  isRehydrated: boolean;
 };
 
 const ExperimentContext = createContext<ExperimentContextValue | null>(null);
 
+function getClientStorages(): StorageLike[] {
+  if (typeof window === "undefined") return [];
+  return [window.sessionStorage, window.localStorage];
+}
+
 export function ExperimentProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<ExperimentState>(initialState);
-  const value = useMemo(() => ({ state, setState }), [state]);
+  const [state, dispatch] = useReducer(
+    experimentReducer,
+    undefined,
+    createInitialExperimentState,
+  );
+
+  // Rehidrasi otomatis sekali setelah mount (bukan lazy init) supaya render
+  // pertama server & client identik — bebas hydration mismatch. Dispatch
+  // REHYDRATE (dengan state storage ATAU state awal) menandai storageChecked
+  // yang menjadi gerbang persistence dan guard anti-cheat.
+  useEffect(() => {
+    const persisted = loadPersistedState(getClientStorages(), Date.now());
+    dispatch({ type: "REHYDRATE", state: persisted ?? createInitialExperimentState() });
+  }, []);
+
+  // Write-through persistence: sessionStorage DAN localStorage. Baru aktif
+  // setelah storage diperiksa agar state awal tidak menimpa data tersimpan.
+  useEffect(() => {
+    if (!state.storageChecked) return;
+    persistState(state, getClientStorages());
+  }, [state]);
+
+  const value = useMemo(
+    () => ({ state, dispatch, isRehydrated: state.storageChecked }),
+    [state, dispatch],
+  );
+
   return <ExperimentContext.Provider value={value}>{children}</ExperimentContext.Provider>;
 }
 
