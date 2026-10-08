@@ -207,6 +207,11 @@ export type ExperimentAction =
   /** Timer mencapai 00:00 → kunci input; auto-submit & debriefing ditangani UI. */
   | { type: "EXPIRE" }
   | { type: "UPSERT_CASE_LOG"; caseLog: CaseLog }
+  /** Simpan durasi stopwatch kasus saat modal ditutup (BETE-9). Boleh dipanggil
+   * saat status "running" MAUPUN "expired": keputusan desain BETE-9 — jika
+   * timer global habis saat modal terbuka, durasi parsial tetap tersimpan
+   * dengan is_saved/rank semula. Hanya menyentuh durationSeconds. */
+  | { type: "SAVE_CASE_DURATION"; caseId: number; durationSeconds: number }
   | { type: "SET_RECOMMENDATIONS"; patch: Partial<Recommendations> }
   | { type: "SET_QUESTIONNAIRE"; patch: Partial<Questionnaire> }
   | { type: "SET_DEMOGRAPHICS"; patch: Partial<Demographics> }
@@ -280,6 +285,23 @@ export function experimentReducer(state: ExperimentState, action: ExperimentActi
         index === -1
           ? [...state.caseLogs, action.caseLog]
           : state.caseLogs.map((c, i) => (i === index ? { ...c, ...action.caseLog } : c));
+      return { ...state, caseLogs };
+    }
+
+    case "SAVE_CASE_DURATION": {
+      // Durasi parsial tetap tersimpan saat "expired" (BETE-9); is_saved dan
+      // rank tidak tersentuh. "idle"/"submitted" tetap menolak.
+      if (state.status !== "running" && state.status !== "expired") return state;
+      const durationIndex = state.caseLogs.findIndex((c) => c.caseId === action.caseId);
+      const caseLogs =
+        durationIndex === -1
+          ? [
+              ...state.caseLogs,
+              { caseId: action.caseId, durationSeconds: action.durationSeconds, isSaved: false, rank: null },
+            ]
+          : state.caseLogs.map((c, i) =>
+              i === durationIndex ? { ...c, durationSeconds: action.durationSeconds } : c,
+            );
       return { ...state, caseLogs };
     }
 
