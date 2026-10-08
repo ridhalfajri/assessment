@@ -72,6 +72,53 @@ Salin `.env.example` ke `.env.local` dan isi nilai dari Dashboard Supabase
 Build tetap berhasil tanpa env terisi — nilai env baru dibaca saat klien
 Supabase benar-benar dipakai (lihat `src/lib/supabase.ts`).
 
+## Halaman Login/Consent & Skenario Dinamis (BETE-8)
+
+Alur pembuka eksperimen (PRD 3.1 & 3.3):
+
+- **Login & Informed Consent** (`src/app/page.tsx` + `src/components/ConsentForm.tsx`):
+  partisipan mengisi username, membaca informed consent, dan **wajib** mencentang
+  persetujuan — tombol mulai tidak aktif sebelum keduanya terpenuhi. Saat mulai:
+  `participantId` (uuid v4) dibuat, grup 1–4 diacak (`assignTreatmentGroup()`),
+  global timer 40 menit dimulai (deadline absolut), dan username disimpan ke
+  `demographics.username` (kolom `participants.username` di Supabase). Semua lewat
+  `ExperimentContext`; refresh di tengah sesi menampilkan panel lanjutkan, bukan
+  sesi baru.
+- **Step 1 — Skenario & Memo** (`src/app/(survey)/step-1-scenario/page.tsx` +
+  `src/components/ScenarioContent.tsx`): kasus dasar PT Cahaya Gama (4 akun biaya
+  bermasalah, total Rp1.000.000.000) + pesan klien & memo manajer yang dirender
+  **dinamis per `treatmentGroupId`** sesuai matriks 2×2 (preferensi klien
+  implisit/eksplisit × tekanan akuntabilitas lemah/kuat).
+
+### Konten riset di `src/content/`
+
+Semua teks riset terpusat di modul konten — **tidak ada teks treatment di
+komponen**:
+
+| Modul | Isi |
+| --- | --- |
+| `src/content/consent.ts` | Teks informed consent + janji insentif pulsa (PRD 3.1). |
+| `src/content/scenario.ts` | Kasus dasar PT Cahaya Gama — sama untuk semua grup; total akun dikunci unit test. |
+| `src/content/treatments.ts` | Matriks teks per grup 1–4 (objek per grup; struktur 2×2 dijamin unit test). |
+
+> ⚠️ **Naskah riset final belum tersedia** — semua teks di modul ini bertanda
+> `[PLACEHOLDER]` (fragmennya mengikuti matriks arsitektur). Saat naskah final
+> diserahkan owner, cukup timpa modul-modul di atas tanpa menyentuh komponen.
+
+### Override grup untuk pengujian (dev saja)
+
+Di dev server (`npm run dev`), tambahkan query param `?group=1..4` pada
+`/step-1-scenario` untuk memaksa salah satu varian teks (banner dev akan
+muncul, grup asli hasil random assignment tidak berubah):
+
+```bash
+npm run dev
+# buka http://localhost:3000/step-1-scenario?group=3
+```
+
+Di build produksi override ini **selalu nonaktif** — random assignment tidak
+dapat ditimpa (`src/lib/dev-override.ts`, teruji).
+
 ## API — `POST /api/submit-survey`
 
 Endpoint batch submit (BETE-7). Seluruh state eksperimen dikirim sekali di

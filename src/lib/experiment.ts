@@ -52,6 +52,9 @@ export type Questionnaire = {
 };
 
 export type Demographics = {
+  /** Username dari halaman Login & Informed Consent (BETE-8);
+   * kolom participants.username NOT NULL di skema BETE-5. */
+  username: string | null;
   age: number | null;
   gender: string | null;
   education: string | null;
@@ -82,7 +85,7 @@ export const STEP_PATHS = [
 ] as const;
 
 /** Kunci penyimpanan yang sama untuk sessionStorage dan localStorage. */
-export const PERSISTED_STATE_VERSION = 1;
+export const PERSISTED_STATE_VERSION = 2; // v2: demographics.username (BETE-8).
 export const PERSISTENCE_KEY = "experiment.state.v1";
 
 // ---------------------------------------------------------------------------
@@ -182,6 +185,7 @@ export function createInitialExperimentState(): ExperimentState {
     },
     questionnaire: { q1: null, q2: null, q3: null },
     demographics: {
+      username: null,
       age: null,
       gender: null,
       education: null,
