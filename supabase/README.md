@@ -52,6 +52,7 @@ Constraint: `UNIQUE (session_id, case_id)` — satu baris per kasus per sesi (in
 | `know_how_fee` / `entertainment` / `maintenance` / `marketing` | bigint NOT NULL | nilai rekomendasi 4 biaya (Rp) |
 | `confidence_level` | integer NOT NULL | CHECK `0–100` (slider keyakinan) |
 | `q1_answer` / `q2_answer` / `q3_answer` | text NOT NULL | 3 item kuesioner |
+| `manipulation_check` | integer | CHECK `1–5` — skala Likert manipulation check (BETE-14); `null` hanya untuk baris lama/uji sebelum migrasi 0003, kontrak API mewajibkannya |
 | `created_at` | timestamptz NOT NULL | default `now()` |
 
 ## Diagram Relasi
@@ -74,8 +75,10 @@ docker run -d --name pg-experiment -e POSTGRES_PASSWORD=postgres postgres:16
 # 2. Salin dan terapkan migrasi
 docker cp supabase/migrations/0001_init.sql pg-experiment:/tmp/
 docker cp supabase/migrations/0002_submit_survey_rpc.sql pg-experiment:/tmp/
+docker cp supabase/migrations/0003_manipulation_check.sql pg-experiment:/tmp/
 docker exec pg-experiment psql -U postgres -f /tmp/0001_init.sql
 docker exec pg-experiment psql -U postgres -f /tmp/0002_submit_survey_rpc.sql
+docker exec pg-experiment psql -U postgres -f /tmp/0003_manipulation_check.sql
 
 # 3. Cek hasil (opsional)
 docker exec pg-experiment psql -U postgres -c "\dt public.*"

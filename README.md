@@ -150,9 +150,9 @@ Tiga langkah akhir eksperimen, submit, dan halaman penutup:
   dilewati), partisipan tetap dibawa ke debriefing.
 
 Bukti happy path: `node scripts/e2e-happy-path.mjs` (butuh server produksi
-+ `bete10-pg` Postgres lokal; driver `playwright-core` + chromium). Catatan:
-`manipulationCheck` (Likert) ikut dikirim di payload namun **belum** ada
-kolomnya di skema Supabase — perlu migrasi backend sebelum dipakai riset.
++ `bete10-pg` Postgres lokal; driver `playwright-core` + chromium).
+`manipulationCheck` (Likert) tersimpan di `survey_results.manipulation_check`
+sejak BETE-14 (migrasi `0003_manipulation_check.sql`).
 
 ## API — `POST /api/submit-survey`
 

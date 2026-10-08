@@ -54,6 +54,7 @@ describe("jawaban kuesioner lolos skema zod kontrak API (BETE-7)", () => {
         q1,
         q2: "opsi apa pun",
         q3: "opsi apa pun",
+        manipulationCheck: 3, // wajib sejak BETE-14 (Likert 1–5)
       });
       expect(result.success).toBe(true);
     }

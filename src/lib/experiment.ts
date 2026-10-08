@@ -12,7 +12,7 @@
  *  - sessionData.deadlineTimestamp → deadline absolut timer (anti-drift setelah F5),
  *    dipersist; globalTimeRemaining tetap dihitung ulang dari deadline saat rehidrasi.
  *  - questionnaire.manipulationCheck → jawaban skala Likert 1–5 manipulation check
- *    (BETE-10; kolom DB menyusul keputusan backend — payload tetap mengirimkannya).
+ *    (BETE-10; disimpan ke survey_results.manipulation_check sejak BETE-14).
  *  - demographics.affiliation → afiliasi partisipan (BETE-10; kolom participants
  *    affiliation NOT NULL di skema BETE-5, wajib oleh zod kontrak API BETE-7).
  */
@@ -53,9 +53,9 @@ export type Questionnaire = {
   q1: string | null;
   q2: string | null;
   q3: string | null;
-  /** Jawaban skala Likert 1–5 untuk manipulation check (BETE-10). Tersimpan di
-   * state & dikirim dalam payload; penyimpanan DB-nya menyusul di backend
-   * (skema survey_results saat ini hanya memuat q1–q3_answer). */
+  /** Jawaban skala Likert 1–5 untuk manipulation check (BETE-10). Wajib di
+   * payload & tersimpan di survey_results.manipulation_check (BETE-14);
+   * null hanya di state berjalan sebelum butir dijawab. */
   manipulationCheck: number | null;
 };
 

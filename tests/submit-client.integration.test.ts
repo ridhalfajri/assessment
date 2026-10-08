@@ -92,7 +92,7 @@ describe.skipIf(!TEST_DATABASE_URL)("BETE-10 happy path — payload frontend ter
   beforeAll(async () => {
     client = new Client({ connectionString: TEST_DATABASE_URL });
     await client.connect();
-    for (const file of ["0001_init.sql", "0002_submit_survey_rpc.sql"]) {
+    for (const file of ["0001_init.sql", "0002_submit_survey_rpc.sql", "0003_manipulation_check.sql"]) {
       const sql = await readFile(path.join(__dirname, "../supabase/migrations", file), "utf8");
       await client.query(sql);
     }
@@ -163,6 +163,9 @@ describe.skipIf(!TEST_DATABASE_URL)("BETE-10 happy path — payload frontend ter
     expect(survey.rows[0].q1_answer).toBe("Pasal 6 dan 9 UU PPh");
     expect(survey.rows[0].q2_answer).toBe("Terdapat hubungan istimewa");
     expect(survey.rows[0].q3_answer).toBe("Opsi daftar nominatif");
+    // Roundtrip manipulation check (BETE-14): state UI (Likert 5) → skema zod
+    // → RPC → kolom survey_results.manipulation_check.
+    expect(survey.rows[0].manipulation_check).toBe(5);
   });
 
   it("submit ganda (retry/double-click) dengan participantId sama → already_submitted, tidak menduplikasi baris", async () => {

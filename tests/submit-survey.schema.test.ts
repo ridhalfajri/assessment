@@ -166,6 +166,39 @@ describe("submitSurveyPayloadSchema — recommendations", () => {
   });
 });
 
+describe("submitSurveyPayloadSchema — questionnaire.manipulationCheck (BETE-14)", () => {
+  it("menerima seluruh skala Likert 1–5 dan meneruskannya", () => {
+    for (const value of [1, 2, 3, 4, 5]) {
+      const payload = buildValidPayload();
+      payload.questionnaire.manipulationCheck = value;
+      const result = schema.safeParse(payload);
+      expect(result.success, `manipulationCheck: ${value}`).toBe(true);
+      if (result.success) {
+        expect(result.data.questionnaire.manipulationCheck).toBe(value);
+      }
+    }
+  });
+
+  it("menolak payload tanpa manipulationCheck (wajib — instrumen inti riset)", () => {
+    const payload = buildValidPayload();
+    delete (payload.questionnaire as Record<string, unknown>).manipulationCheck;
+    const result = schema.safeParse(payload);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0].path).toContain("manipulationCheck");
+    }
+  });
+
+  it("menolak manipulationCheck null / di luar 1–5 / non-integer", () => {
+    for (const value of [null, 0, 6, 2.5, "3"]) {
+      const payload = buildValidPayload();
+      (payload.questionnaire as Record<string, unknown>).manipulationCheck = value;
+      expect(schema.safeParse(payload).success, `manipulationCheck: ${value}`).toBe(false);
+    }
+  });
+});
+
+
 describe("submitSurveyPayloadSchema — questionnaire & demographics", () => {
   it("menolak jawaban kuesioner kosong / whitespace / lebih dari 1000 karakter", () => {
     const empty = buildValidPayload();

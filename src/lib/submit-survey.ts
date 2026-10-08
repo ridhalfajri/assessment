@@ -17,6 +17,12 @@ import { z } from "zod";
  *  - `sessionId` tidak ada di payload: identitas sesi diturunkan server
  *    dari participantId (UNIQUE(participant_id)), jadi submit ulang dengan
  *    state yang sama tidak akan menduplikasi baris.
+ *  - `questionnaire.manipulationCheck` (Likert 1–5, BETE-14) WAJIB — bukan
+ *    nullable — meski kolom `survey_results.manipulation_check` di DB sengaja
+ *    NULL (baris lama/uji sebelum migrasi 0003). Alasan: instrumen inti riset
+ *    yang harus terregistrasi pada tiap partisipan, gerbang Step 4
+ *    (`isStep4GateSatisfied`) menjamin isian sebelum Step 5, dan perlakuannya
+ *    konsisten dengan q1–q3 pada objek yang sama. Pelanggaran → 400.
  */
 
 /** No. HP Indonesia: 08xx / 62xx / +62xx, 9–13 digit (contoh 081234567890). */
@@ -120,6 +126,14 @@ export const submitSurveyPayloadSchema = z.object({
     q1: z.string().trim().min(1).max(1000),
     q2: z.string().trim().min(1).max(1000),
     q3: z.string().trim().min(1).max(1000),
+    // Wajib (bukan nullable) — kolom DB NULL hanya untuk baris lama/uji;
+    // keputusan lengkap di catatan kontrak header file (BETE-14).
+    manipulationCheck: z
+      .number()
+      .int()
+      .min(1)
+      .max(5)
+      .describe("Manipulation check, skala Likert 1–5"),
   }),
   demographics: z.object({
     username: z.string().trim().min(1).max(100),
