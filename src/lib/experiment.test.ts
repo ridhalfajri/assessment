@@ -261,6 +261,58 @@ describe("experimentReducer", () => {
     expect(state.caseLogs).toHaveLength(1);
     expect(state.caseLogs[0]).toEqual({ caseId: 1, durationSeconds: 45, isSaved: true, rank: 3 });
   });
+
+  it("SAVE_CASE_DURATION membuat log baru dengan default is_saved/rank", () => {
+    let state = startSession(createInitialExperimentState());
+    state = experimentReducer(state, { type: "SAVE_CASE_DURATION", caseId: 7, durationSeconds: 12 });
+    expect(state.caseLogs).toEqual([
+      { caseId: 7, durationSeconds: 12, isSaved: false, rank: null },
+    ]);
+  });
+
+  it("SAVE_CASE_DURATION hanya menyentuh durationSeconds — is_saved/rank tetap", () => {
+    let state = startSession(createInitialExperimentState());
+    state = experimentReducer(state, {
+      type: "UPSERT_CASE_LOG",
+      caseLog: { caseId: 3, durationSeconds: 10, isSaved: true, rank: 2 },
+    });
+    state = experimentReducer(state, { type: "SAVE_CASE_DURATION", caseId: 3, durationSeconds: 55 });
+    expect(state.caseLogs).toEqual([
+      { caseId: 3, durationSeconds: 55, isSaved: true, rank: 2 },
+    ]);
+  });
+
+  it("SAVE_CASE_DURATION tetap menyimpan durasi parsial saat expired (BETE-9)", () => {
+    let state = startSession(createInitialExperimentState());
+    state = experimentReducer(state, {
+      type: "UPSERT_CASE_LOG",
+      caseLog: { caseId: 5, durationSeconds: 20, isSaved: true, rank: 1 },
+    });
+    state = experimentReducer(state, { type: "EXPIRE" });
+    state = experimentReducer(state, { type: "SAVE_CASE_DURATION", caseId: 5, durationSeconds: 27 });
+    // Durasi parsial tersimpan; is_saved/rank tidak berubah.
+    expect(state.caseLogs).toEqual([
+      { caseId: 5, durationSeconds: 27, isSaved: true, rank: 1 },
+    ]);
+  });
+
+  it("SAVE_CASE_DURATION diabaikan saat idle dan submitted", () => {
+    const idle = experimentReducer(createInitialExperimentState(), {
+      type: "SAVE_CASE_DURATION",
+      caseId: 1,
+      durationSeconds: 10,
+    });
+    expect(idle.caseLogs).toEqual([]);
+
+    let submitted = startSession(createInitialExperimentState());
+    submitted = experimentReducer(submitted, { type: "MARK_SUBMITTED" });
+    submitted = experimentReducer(submitted, {
+      type: "SAVE_CASE_DURATION",
+      caseId: 1,
+      durationSeconds: 10,
+    });
+    expect(submitted.caseLogs).toEqual([]);
+  });
 });
 
 describe("persistensi", () => {
