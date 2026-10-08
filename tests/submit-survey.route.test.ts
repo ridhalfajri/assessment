@@ -46,6 +46,8 @@ describe("POST /api/submit-survey", () => {
       "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
     );
     expect(args.p_payload.caseLogs).toHaveLength(14);
+    // Field manipulationCheck (BETE-14) ikut diteruskan ke RPC — bukan di-strip.
+    expect(args.p_payload.questionnaire.manipulationCheck).toBe(4);
   });
 
   it("payload valid (trim otomatis) diteruskan bersih ke RPC", async () => {
@@ -100,6 +102,19 @@ describe("POST /api/submit-survey", () => {
     expect(Array.isArray(body.details)).toBe(true);
     const paths = body.details.map((d: { path: string }) => d.path);
     expect(paths).toContain("sessionData.treatmentGroupId");
+    expect(rpcMock).not.toHaveBeenCalled();
+  });
+
+  it("payload tanpa manipulationCheck → 400, RPC tidak dipanggil (BETE-14)", async () => {
+    const payload = buildValidPayload();
+    delete (payload.questionnaire as Record<string, unknown>).manipulationCheck;
+
+    const res = await POST(postRequest(JSON.stringify(payload)));
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    const paths = body.details.map((d: { path: string }) => d.path);
+    expect(paths).toContain("questionnaire.manipulationCheck");
     expect(rpcMock).not.toHaveBeenCalled();
   });
 

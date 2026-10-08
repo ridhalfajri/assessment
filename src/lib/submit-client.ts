@@ -9,8 +9,9 @@
  *  - caseLogs TEPAT 14 entri, caseId 1–14 masing-masing tepat sekali. Kasus
  *    yang tidak dibuka: durationSeconds 0, isSaved false, rank null.
  *  - Semua field recommendations/questionnaire/demographics terisi (kolom DB
- *    NOT NULL) — likert manipulationCheck ikut dikirim walau skema API saat
- *    ini masih men-strip-nya (kolom DB menyusul; lihat catatan di issue).
+ *    NOT NULL) — likert manipulationCheck wajib terisi (1–5): kolom DB
+ *    `survey_results.manipulation_check` + kontrak zod sudah menerima sejak
+ *    BETE-14.
  *  - globalTimeRemaining (0–2400) ikut dalam sessionData → tersimpan sebagai
  *    sessions.global_remaining_seconds di server.
  *
@@ -65,9 +66,8 @@ export function normalizeCaseLogs(caseLogs: CaseLog[]): CaseLog[] {
 /**
  * Bentuk request lengkap untuk POST /api/submit-survey dari state eksperimen:
  * payload arsitektur (buildSubmitPayload) + caseLogs ternormalisasi 14 entri.
- * Field manipulationCheck (Likert) ikut dikirim; skema API saat ini men-strip
- * field tambahan secara diam — data tidak hilang dari state klien dan sudah
- * siap saat backend menambah kolomnya.
+ * Field manipulationCheck (Likert) ikut dikirim dan merupakan bagian kontrak
+ * API sejak BETE-14 (kolom survey_results.manipulation_check).
  */
 export function buildSubmitRequest(
   state: ExperimentState,

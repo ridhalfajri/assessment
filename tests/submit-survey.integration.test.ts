@@ -36,7 +36,7 @@ describe.skipIf(!TEST_DATABASE_URL)("submit_survey RPC (integrasi Postgres lokal
   beforeAll(async () => {
     client = new Client({ connectionString: TEST_DATABASE_URL });
     await client.connect();
-    for (const file of ["0001_init.sql", "0002_submit_survey_rpc.sql"]) {
+    for (const file of ["0001_init.sql", "0002_submit_survey_rpc.sql", "0003_manipulation_check.sql"]) {
       const sql = await readFile(
         path.join(__dirname, "../supabase/migrations", file),
         "utf8",
@@ -107,6 +107,20 @@ describe.skipIf(!TEST_DATABASE_URL)("submit_survey RPC (integrasi Postgres lokal
     expect(survey.rows[0].confidence_level).toBe(85);
     expect(survey.rows[0].q1_answer).toBe("Pasal 6 dan 9 UU PPh");
     expect(survey.rows[0].q3_answer).toContain("daftar nominatif");
+    // manipulation check (BETE-14): Likert tersimpan di kolomnya sendiri
+    expect(survey.rows[0].manipulation_check).toBe(4);
+  });
+
+  it("manipulationCheck di luar 1–5 ditolak DB (CHECK), rollback penuh (BETE-14)", async () => {
+    const payload = buildValidPayload();
+    const participantId = randomUUID();
+    payload.sessionData.participantId = participantId;
+    payload.questionnaire.manipulationCheck = 9; // melanggar CHECK 1–5
+
+    await expect(call(payload)).rejects.toThrow();
+
+    expect(await count("participants", "id", participantId)).toBe(0);
+    expect(await count("sessions", "participant_id", participantId)).toBe(0);
   });
 
   it("submit ulang dengan participantId sama → already_submitted, tidak ada duplikasi", async () => {

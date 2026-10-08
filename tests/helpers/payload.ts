@@ -26,6 +26,7 @@ export function buildValidPayload(): SubmitSurveyPayload {
       q1: "Pasal 6 dan 9 UU PPh",
       q2: "Terdapat hubungan istimewa",
       q3: "Semua biaya entertainment yang dilengkapi daftar nominatif",
+      manipulationCheck: 4,
     },
     demographics: {
       username: "partisipan_01",
