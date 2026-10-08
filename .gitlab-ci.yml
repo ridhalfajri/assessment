@@ -1,0 +1,44 @@
+# Pipeline CI/CD — assessment (BETE-12)
+#
+# build       : lint + unit test + next build (berjalan di semua branch)
+# deploy:prod : promote ke produksi Vercel via Vercel CLI (hanya default branch = master)
+#
+# Variabel CI yang diisi owner di GitLab → Settings → CI/CD → Variables
+# (langkah lengkap: DEPLOYMENT.md § "Setup awal"):
+#   VERCEL_TOKEN      — token akun Vercel          (masked)
+#   VERCEL_ORG_ID     — orgId dari .vercel/project.json     (masked)
+#   VERCEL_PROJECT_ID — projectId dari .vercel/project.json (masked)
+
+stages:
+  - build
+  - deploy
+
+.node:
+  image: node:22
+  cache:
+    key:
+      files:
+        - package-lock.json
+    paths:
+      - .npm/
+
+build:
+  extends: .node
+  stage: build
+  script:
+    - npm ci --cache .npm --prefer-offline --no-audit --no-fund
+    - npm run lint
+    - npm test
+    - npm run build
+
+deploy:prod:
+  extends: .node
+  stage: deploy
+  environment: production
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+  script:
+    - npm i -g vercel@latest
+    - vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+    - vercel build --prod --token="$VERCEL_TOKEN"
+    - vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
