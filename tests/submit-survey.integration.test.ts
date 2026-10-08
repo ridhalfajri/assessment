@@ -36,7 +36,7 @@ describe.skipIf(!TEST_DATABASE_URL)("submit_survey RPC (integrasi Postgres lokal
   beforeAll(async () => {
     client = new Client({ connectionString: TEST_DATABASE_URL });
     await client.connect();
-    for (const file of ["0001_init.sql", "0002_submit_survey_rpc.sql", "0003_manipulation_check.sql"]) {
+    for (const file of ["0001_init.sql", "0002_submit_survey_rpc.sql", "0003_manipulation_check.sql", "0004_integrity_hardening.sql"]) {
       const sql = await readFile(
         path.join(__dirname, "../supabase/migrations", file),
         "utf8",
@@ -211,5 +211,37 @@ describe.skipIf(!TEST_DATABASE_URL)("submit_survey RPC (integrasi Postgres lokal
     } finally {
       await clientB.end();
     }
+  });
+
+  it("isComplete false (auto-submit expiry) → sessions.is_completed = false (BETE-13)", async () => {
+    const payload = buildValidPayload();
+    const participantId = randomUUID();
+    payload.sessionData.participantId = participantId;
+    payload.sessionData.globalTimeRemaining = 0;
+    payload.isComplete = false;
+
+    await call(payload);
+
+    const session = await client.query(
+      "select is_completed, global_remaining_seconds from public.sessions where participant_id = $1",
+      [participantId],
+    );
+    expect(session.rows[0].is_completed).toBe(false);
+    expect(session.rows[0].global_remaining_seconds).toBe(0);
+  });
+
+  it("payload lama tanpa isComplete → sessions.is_completed = true (default)", async () => {
+    const payload = buildValidPayload();
+    const participantId = randomUUID();
+    payload.sessionData.participantId = participantId;
+    delete (payload as Record<string, unknown>).isComplete;
+
+    await call(payload);
+
+    const session = await client.query(
+      "select is_completed from public.sessions where participant_id = $1",
+      [participantId],
+    );
+    expect(session.rows[0].is_completed).toBe(true);
   });
 });

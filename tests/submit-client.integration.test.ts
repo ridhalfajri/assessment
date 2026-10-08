@@ -28,12 +28,12 @@ import { submitSurveyPayloadSchema } from "@/lib/submit-survey";
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL ?? "";
 
 /** State "running" dengan identitas valid, seperti setelah consent (BETE-8). */
-function startSession(state: ExperimentState): ExperimentState {
+function startSession(state: ExperimentState, nowMs = Date.now()): ExperimentState {
   return experimentReducer(state, {
     type: "START_SESSION",
     participantId: randomUUID(),
     treatmentGroupId: 3,
-    nowMs: Date.now(),
+    nowMs,
   });
 }
 
@@ -43,7 +43,8 @@ function startSession(state: ExperimentState): ExperimentState {
  * rekomendasi, kuesioner + Likert, dan demografi lengkap.
  */
 function createCompletedState(): ExperimentState {
-  let state = startSession(createInitialExperimentState());
+  const startMs = Date.now();
+  let state = startSession(createInitialExperimentState(), startMs);
   state = experimentReducer(state, {
     type: "UPSERT_CASE_LOG",
     caseLog: { caseId: 1, durationSeconds: 95, isSaved: true, rank: 1 },
@@ -52,6 +53,9 @@ function createCompletedState(): ExperimentState {
     type: "UPSERT_CASE_LOG",
     caseLog: { caseId: 2, durationSeconds: 40, isSaved: false, rank: 14 },
   });
+  // Majukan timer sesuai waktu baca (95 + 40 dtk) agar state uji konsisten
+  // dengan cek konsistensi waktu skema API (BETE-13).
+  state = experimentReducer(state, { type: "TICK", nowMs: startMs + 135_000 });
   state = experimentReducer(state, {
     type: "SET_RECOMMENDATIONS",
     patch: {
@@ -92,7 +96,7 @@ describe.skipIf(!TEST_DATABASE_URL)("BETE-10 happy path — payload frontend ter
   beforeAll(async () => {
     client = new Client({ connectionString: TEST_DATABASE_URL });
     await client.connect();
-    for (const file of ["0001_init.sql", "0002_submit_survey_rpc.sql", "0003_manipulation_check.sql"]) {
+    for (const file of ["0001_init.sql", "0002_submit_survey_rpc.sql", "0003_manipulation_check.sql", "0004_integrity_hardening.sql"]) {
       const sql = await readFile(path.join(__dirname, "../supabase/migrations", file), "utf8");
       await client.query(sql);
     }
@@ -132,7 +136,7 @@ describe.skipIf(!TEST_DATABASE_URL)("BETE-10 happy path — payload frontend ter
     expect(session.rows[0].id).toBe(sessionId);
     expect(session.rows[0].treatment_group).toBe(3);
     expect(session.rows[0].is_completed).toBe(true);
-    expect(session.rows[0].global_remaining_seconds).toBe(2400); // timer belum berjalan di state uji
+    expect(session.rows[0].global_remaining_seconds).toBe(2265); // 2400 − 135 dtk waktu baca (timer dimajukan di state uji)
 
     // case_logs — 14 baris: 2 kasus dibaca, 12 kasus belum dibuka (default kontrak)
     const logs = await client.query(

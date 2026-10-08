@@ -23,6 +23,15 @@ import { z } from "zod";
  *    yang harus terregistrasi pada tiap partisipan, gerbang Step 4
  *    (`isStep4GateSatisfied`) menjamin isian sebelum Step 5, dan perlakuannya
  *    konsisten dengan q1–q3 pada objek yang sama. Pelanggaran → 400.
+ *
+ * Ketat integritas eksperimen (BETE-13 audit):
+ *  - `isComplete` (boolean, top-level, default `true`) — `false` HANYA dari
+ *    auto-submit saat timer habis (GlobalTimer), agar sesi kadaluarsa
+ *    terbedakan di kolom `sessions.is_completed` (migrasi 0004). Default
+ *    `true` menjaga payload lama tetap kompatibel.
+ *  - Konsistensi waktu: total durasi baca 14 kasus tidak boleh melebihi
+ *    waktu sesi yang tersedia (2400 − globalTimeRemaining + toleransi).
+ *    Pelanggaran → 400 (data mustahil: "timer penuh tapi kasus terbaca").
  */
 
 /** No. HP Indonesia: 08xx / 62xx / +62xx, 9–13 digit (contoh 081234567890). */
@@ -30,6 +39,14 @@ const PHONE_REGEX = /^(?:\+62|62|0)8[1-9]\d{7,11}$/;
 
 /** Jumlah total waktu eksperimen (40 menit) — batas atas sisa timer. */
 const GLOBAL_TIMER_BUDGET_SECONDS = 2400;
+
+/**
+ * Toleransi konsistensi waktu (detik) antara total durasi baca kasus dan
+ * waktu sesi yang tersedia: menutup pembulatan stopwatch/timer klien (ceil
+ * detik, tick interval 1 dtk) dan latensi auto-submit di expiry. Jauh di
+ * atas penyimpangan aliran wajar, jauh di bawah skala kecurangan.
+ */
+const TIMING_TOLERANCE_SECONDS = 60;
 
 const caseLogSchema = z.object({
   caseId: z
@@ -143,6 +160,22 @@ export const submitSurveyPayloadSchema = z.object({
     affiliation: z.string().trim().min(1).max(200),
     phoneNumber: phoneNumberSchema,
   }),
-});
+  isComplete: z
+    .boolean()
+    .default(true)
+    .describe("False hanya dari auto-submit saat timer habis (migrasi 0004)"),
+})
+  .refine(
+    (payload) => {
+      const elapsed = GLOBAL_TIMER_BUDGET_SECONDS - payload.sessionData.globalTimeRemaining;
+      const readTotal = payload.caseLogs.reduce((sum, log) => sum + log.durationSeconds, 0);
+      return readTotal <= elapsed + TIMING_TOLERANCE_SECONDS;
+    },
+    {
+      message:
+        "Total durasi baca kasus melebihi waktu sesi yang tersedia (data tidak mungkin).",
+      path: ["caseLogs"],
+    },
+  );
 
 export type SubmitSurveyPayload = z.infer<typeof submitSurveyPayloadSchema>;

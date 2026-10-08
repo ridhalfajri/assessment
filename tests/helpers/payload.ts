@@ -36,6 +36,7 @@ export function buildValidPayload(): SubmitSurveyPayload {
       affiliation: "KAP Sejahtera",
       phoneNumber: "081234567890",
     },
+    isComplete: true,
   };
 }
 

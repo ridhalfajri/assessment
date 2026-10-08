@@ -93,7 +93,9 @@ test("timer habis → auto-submit data terisi, DB tercatat (remaining=0), ke deb
     )
   )[0];
   expect(session).toBeDefined();
-  expect(session.is_completed).toBe(true);
+  // BETE-13: auto-submit saat timer habis mengirim isComplete:false — sesi
+  // kadaluarsa terbedakan di kolom is_completed (migrasi 0004).
+  expect(session.is_completed).toBe(false);
   expect(session.global_remaining_seconds).toBe(0);
 
   const caseLogs = await dbQuery<{ n: number }>(

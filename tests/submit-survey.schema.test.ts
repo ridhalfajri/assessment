@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { submitSurveyPayloadSchema } from "@/lib/submit-survey";
 import { buildPartialRankPayload, buildValidPayload } from "./helpers/payload";
-
 const schema = submitSurveyPayloadSchema;
 
 describe("submitSurveyPayloadSchema — payload valid", () => {
@@ -234,5 +233,77 @@ describe("submitSurveyPayloadSchema — questionnaire & demographics", () => {
       payload.demographics.phoneNumber = phone;
       expect(schema.safeParse(payload).success, `phone: ${phone}`).toBe(false);
     }
+  });
+});
+
+describe("submitSurveyPayloadSchema — isComplete (BETE-13)", () => {
+  it("isComplete false (auto-submit timer habis) diterima apa adanya", () => {
+    const payload = buildValidPayload();
+    payload.isComplete = false;
+    const result = schema.safeParse(payload);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.isComplete).toBe(false);
+    }
+  });
+
+  it("isComplete tidak dikirim (payload lama) → default true", () => {
+    const payload = buildValidPayload() as Record<string, unknown>;
+    delete payload.isComplete;
+    const result = schema.safeParse(payload);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.isComplete).toBe(true);
+    }
+  });
+
+  it("menolak isComplete non-boolean", () => {
+    for (const value of ["false", 1, null]) {
+      const payload = buildValidPayload() as Record<string, unknown>;
+      payload.isComplete = value;
+      expect(schema.safeParse(payload).success, `isComplete: ${String(value)}`).toBe(false);
+    }
+  });
+});
+
+describe("submitSurveyPayloadSchema — konsistensi waktu (BETE-13, data mustahil)", () => {
+  it("menolak total durasi baca melebihi waktu sesi (timer penuh tapi 14 kasus terbaca)", () => {
+    // remaining 2400 = sesi baru mulai — tidak mungkin kasus sudah dibaca.
+    const payload = buildValidPayload();
+    payload.sessionData.globalTimeRemaining = 2400;
+    const result = schema.safeParse(payload);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0].path).toContain("caseLogs");
+    }
+  });
+
+  it("menerima total durasi tepat pada toleransi pembulatan, menolak 1 detik lebih", () => {
+    // remaining 2340 → waktu tersedia 60 dtk; toleransi 60 dtk.
+    const atTolerance = buildValidPayload();
+    atTolerance.sessionData.globalTimeRemaining = 2340;
+    atTolerance.caseLogs = atTolerance.caseLogs.map((log, i) => ({
+      ...log,
+      durationSeconds: i === 0 ? 120 : 0, // 60 tersedia + 60 toleransi
+    }));
+    expect(schema.safeParse(atTolerance).success).toBe(true);
+
+    const overTolerance = buildValidPayload();
+    overTolerance.sessionData.globalTimeRemaining = 2340;
+    overTolerance.caseLogs = overTolerance.caseLogs.map((log, i) => ({
+      ...log,
+      durationSeconds: i === 0 ? 121 : 0,
+    }));
+    expect(schema.safeParse(overTolerance).success).toBe(false);
+  });
+
+  it("aliran wajar tetap diterima: auto-submit expiry dengan 14 kasus terbaca", () => {
+    // remaining 0 = 2400 dtk berlalu; total baca ≤ 2400 selalu sah.
+    const payload = buildPartialRankPayload();
+    payload.sessionData.globalTimeRemaining = 0;
+    payload.isComplete = false;
+    const total = payload.caseLogs.reduce((sum, log) => sum + log.durationSeconds, 0);
+    expect(total).toBeLessThanOrEqual(2400);
+    expect(schema.safeParse(payload).success).toBe(true);
   });
 });
