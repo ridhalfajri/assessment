@@ -169,10 +169,26 @@ do $$
 begin
     -- Mirror Supabase's service_role so the grant below also works on a
     -- vanilla local Postgres (no-op on Supabase, where the role exists).
+    -- BYPASSRLS is required: the RPC is security invoker, so its inserts run
+    -- as service_role — without it, RLS default-deny would block every write
+    -- on a vanilla Postgres (real Supabase's service_role has bypassrls too).
     if not exists (select 1 from pg_roles where rolname = 'service_role') then
-        create role service_role nologin;
+        create role service_role nologin bypassrls;
+    elsif not exists (
+        select 1 from pg_roles where rolname = 'service_role' and rolbypassrls
+    ) then
+        alter role service_role bypassrls;
     end if;
 end
 $$;
+
+-- Mirror Supabase's default privileges: real Supabase implicitly grants ALL
+-- on tables/sequences to service_role, a vanilla Postgres does not. Without
+-- these, the RPC (security invoker, runs as service_role via the REST API)
+-- fails with "permission denied for table ..." even with BYPASSRLS — table
+-- ACLs are separate from row-level security. No-op on Supabase (already held).
+grant all on public.participants, public.sessions, public.case_logs,
+  public.survey_results to service_role;
+grant usage, select on all sequences in schema public to service_role;
 
 grant execute on function public.submit_survey(jsonb) to service_role;

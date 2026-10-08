@@ -30,7 +30,7 @@ npm run dev                  # buka http://localhost:3000
 | `npm run build`| Build produksi                            |
 | `npm run start`| Menjalankan hasil build produksi          |
 | `npm run lint` | ESLint                                    |
-| `npm test`     | Vitest — unit + route + integrasi API (BETE-7), unit engine (BETE-6)* |
+| `npm test`     | Vitest — unit + route + integrasi API (BETE-7), unit engine (BETE-6), klien submit (BETE-10)* |
 
 \* Uji integrasi API butuh Postgres lokal (`TEST_DATABASE_URL`, lihat `supabase/README.md`);
 tanpa env itu suite integrasi di-skip otomatis.
@@ -118,6 +118,41 @@ npm run dev
 
 Di build produksi override ini **selalu nonaktif** — random assignment tidak
 dapat ditimpa (`src/lib/dev-override.ts`, teruji).
+
+## Step 3–5, Submit Batch & Debriefing (BETE-10)
+
+Tiga langkah akhir eksperimen, submit, dan halaman penutup:
+
+- **Step 3 — Form Rekomendasi** (`step-3-form`): 4 input Rupiah dengan format
+  ribuan otomatis (`src/lib/format.ts`, maks 13 digit) + slider keyakinan
+  0–100% dengan label nilai hidup. Gerbang: keempat biaya wajib terisi
+  (0 diizinkan, negatif ditolak).
+- **Step 4 — Kuesioner** (`step-4-quiz`): 3 pilihan ganda pengetahuan
+  perpajakan (teks opsi disimpan) + 1 pertanyaan manipulation check skala
+  Likert 1–5. Butir riset di `src/content/questionnaire.ts` (placeholder).
+- **Step 5 — Demografi** (`step-5-demographics`): usia (10–120), gender,
+  pendidikan, afiliasi (wajib), dan No. HP dengan validasi format Indonesia
+  (`PHONE_REGEX` yang sama dengan kontrak API — penting untuk insentif
+  pulsa). Field error per-field tanpa duplikasi aturan (pakai sub-skema zod
+  API).
+- **Submit batch**: tombol final mengirim seluruh state ke `POST
+  /api/submit-survey` melalui `src/lib/submit-client.ts` (normalisasi 14
+  caseLogs + pre-check zod). UI: loading, error + tombol coba lagi, dan
+  deteksi ganda (`already_submitted` diperlakukan sukses — server idempoten
+  per `participant_id`). Sukses → state persisten di-reset, peringatan
+  `beforeunload` berhenti, redirect `/debriefing` (replace).
+- **Debriefing** (`/debriefing`): naskah penutup riset di
+  `src/content/debriefing.ts` (placeholder) — tanpa tombol kembali ke
+  survei. `DebriefingGuard` memulihkan partisipan yang melompat lewat URL
+  saat sesi masih berjalan; setelah submit/expired/reload halaman tampil.
+- **Timer habis**: `GlobalTimer` auto-submit best-effort memakai klien yang
+  sama; payload yang belum lolos validasi tidak dikarang (auto-submit
+  dilewati), partisipan tetap dibawa ke debriefing.
+
+Bukti happy path: `node scripts/e2e-happy-path.mjs` (butuh server produksi
++ `bete10-pg` Postgres lokal; driver `playwright-core` + chromium). Catatan:
+`manipulationCheck` (Likert) ikut dikirim di payload namun **belum** ada
+kolomnya di skema Supabase — perlu migrasi backend sebelum dipakai riset.
 
 ## API — `POST /api/submit-survey`
 

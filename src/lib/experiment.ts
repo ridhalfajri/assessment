@@ -11,6 +11,10 @@
  *    berjalan sebelum storage dibaca (mencegah data tersimpan tertimpa state awal).
  *  - sessionData.deadlineTimestamp → deadline absolut timer (anti-drift setelah F5),
  *    dipersist; globalTimeRemaining tetap dihitung ulang dari deadline saat rehidrasi.
+ *  - questionnaire.manipulationCheck → jawaban skala Likert 1–5 manipulation check
+ *    (BETE-10; kolom DB menyusul keputusan backend — payload tetap mengirimkannya).
+ *  - demographics.affiliation → afiliasi partisipan (BETE-10; kolom participants
+ *    affiliation NOT NULL di skema BETE-5, wajib oleh zod kontrak API BETE-7).
  */
 
 export type TreatmentGroupId = 1 | 2 | 3 | 4;
@@ -49,6 +53,10 @@ export type Questionnaire = {
   q1: string | null;
   q2: string | null;
   q3: string | null;
+  /** Jawaban skala Likert 1–5 untuk manipulation check (BETE-10). Tersimpan di
+   * state & dikirim dalam payload; penyimpanan DB-nya menyusul di backend
+   * (skema survey_results saat ini hanya memuat q1–q3_answer). */
+  manipulationCheck: number | null;
 };
 
 export type Demographics = {
@@ -58,6 +66,8 @@ export type Demographics = {
   age: number | null;
   gender: string | null;
   education: string | null;
+  /** Afiliasi partisipan (BETE-10); kolom participants.affiliation NOT NULL. */
+  affiliation: string | null;
   phoneNumber: string | null;
 };
 
@@ -85,7 +95,7 @@ export const STEP_PATHS = [
 ] as const;
 
 /** Kunci penyimpanan yang sama untuk sessionStorage dan localStorage. */
-export const PERSISTED_STATE_VERSION = 2; // v2: demographics.username (BETE-8).
+export const PERSISTED_STATE_VERSION = 3; // v3: +manipulationCheck & +affiliation (BETE-10).
 export const PERSISTENCE_KEY = "experiment.state.v1";
 
 // ---------------------------------------------------------------------------
@@ -183,12 +193,13 @@ export function createInitialExperimentState(): ExperimentState {
       marketing: null,
       confidenceLevel: null,
     },
-    questionnaire: { q1: null, q2: null, q3: null },
+    questionnaire: { q1: null, q2: null, q3: null, manipulationCheck: null },
     demographics: {
       username: null,
       age: null,
       gender: null,
       education: null,
+      affiliation: null,
       phoneNumber: null,
     },
   };
