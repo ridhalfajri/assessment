@@ -1,0 +1,134 @@
+import { z } from "zod";
+
+/**
+ * Kontrak payload POST /api/submit-survey (BETE-7).
+ *
+ * Bentuknya mengikuti payload JSON state di arsitektur (thread komentar
+ * BETE-2) dan disimpan via RPC `submit_survey` (migrasi 0002). Validasi
+ * ketat di sini = satu-satunya gerbang sebelum data menyentuh database.
+ *
+ * Catatan kontrak untuk frontend (BETE-6/BETE-10):
+ *  - `caseLogs` harus berisi TEPAT 14 entri, caseId 1–14 masing-masing
+ *    tepat sekali. Kasus yang tidak dibuka: durationSeconds 0, isSaved
+ *    false, rank null.
+ *  - `demographics.username` (dari login, BETE-8) dan
+ *    `demographics.affiliation` (form demografi) wajib — kolom
+ *    participants keduanya NOT NULL (skema BETE-5).
+ *  - `sessionId` tidak ada di payload: identitas sesi diturunkan server
+ *    dari participantId (UNIQUE(participant_id)), jadi submit ulang dengan
+ *    state yang sama tidak akan menduplikasi baris.
+ */
+
+/** No. HP Indonesia: 08xx / 62xx / +62xx, 9–13 digit (contoh 081234567890). */
+const PHONE_REGEX = /^(?:\+62|62|0)8[1-9]\d{7,11}$/;
+
+/** Jumlah total waktu eksperimen (40 menit) — batas atas sisa timer. */
+const GLOBAL_TIMER_BUDGET_SECONDS = 2400;
+
+const caseLogSchema = z.object({
+  caseId: z
+    .number()
+    .int()
+    .min(1)
+    .max(14)
+    .describe("ID kasus acuan, 1–14"),
+  durationSeconds: z
+    .number()
+    .int()
+    .min(0)
+    .max(86_400)
+    .describe("Durasi stopwatch baca kasus dalam detik"),
+  isSaved: z.boolean().describe("Jawaban sitasi Ya/Tidak untuk kasus ini"),
+  rank: z
+    .number()
+    .int()
+    .min(1)
+    .max(14)
+    .nullable()
+    .optional()
+    .describe("Peringkat prioritas 1–14; null jika belum diberi ranking"),
+});
+
+const phoneNumberSchema = z
+  .string()
+  .trim()
+  .max(25)
+  .transform((value) => value.replace(/[\s-]/g, ""))
+  .refine((value) => PHONE_REGEX.test(value), {
+    message:
+      "Format No. HP Indonesia tidak valid (contoh: 081234567890 atau +6281234567890)",
+  });
+
+export const submitSurveyPayloadSchema = z.object({
+  sessionData: z.object({
+    participantId: z.uuid({
+      message: "participantId harus UUID yang valid",
+    }),
+    treatmentGroupId: z
+      .number()
+      .int()
+      .min(1)
+      .max(4)
+      .describe("Grup treatment hasil random assignment, 1–4"),
+    globalTimeRemaining: z
+      .number()
+      .int()
+      .min(0)
+      .max(GLOBAL_TIMER_BUDGET_SECONDS)
+      .describe("Sisa detik global timer saat submit (0–2400)"),
+    currentStep: z
+      .number()
+      .int()
+      .min(1)
+      .max(6)
+      .optional()
+      .describe("Langkah UI saat submit; tidak disimpan ke database"),
+  }),
+  caseLogs: z
+    .array(caseLogSchema)
+    .length(14)
+    .describe("Tepat 14 kasus, caseId 1–14 masing-masing tepat sekali")
+    .refine(
+      (logs) => new Set(logs.map((log) => log.caseId)).size === logs.length,
+      {
+        message:
+          "caseLogs harus memuat caseId 1–14 masing-masing tepat sekali",
+      },
+    )
+    .refine(
+      (logs) => {
+        const ranks = logs.flatMap((log) => (log.rank == null ? [] : [log.rank]));
+        return new Set(ranks).size === ranks.length;
+      },
+      {
+        message: "rank_assigned harus unik (satu peringkat 1–14 hanya untuk satu kasus)",
+      },
+    ),
+  recommendations: z.object({
+    knowHowFee: z.number().int().min(0).describe("Jasa konsultasi (Rp)"),
+    entertainment: z.number().int().min(0).describe("Entertainment (Rp)"),
+    maintenance: z.number().int().min(0).describe("Perbaikan (Rp)"),
+    marketing: z.number().int().min(0).describe("Pemasaran (Rp)"),
+    confidenceLevel: z
+      .number()
+      .int()
+      .min(0)
+      .max(100)
+      .describe("Tingkat keyakinan slider 0–100%"),
+  }),
+  questionnaire: z.object({
+    q1: z.string().trim().min(1).max(1000),
+    q2: z.string().trim().min(1).max(1000),
+    q3: z.string().trim().min(1).max(1000),
+  }),
+  demographics: z.object({
+    username: z.string().trim().min(1).max(100),
+    age: z.number().int().min(10).max(120),
+    gender: z.string().trim().min(1).max(50),
+    education: z.string().trim().min(1).max(100),
+    affiliation: z.string().trim().min(1).max(200),
+    phoneNumber: phoneNumberSchema,
+  }),
+});
+
+export type SubmitSurveyPayload = z.infer<typeof submitSurveyPayloadSchema>;

@@ -30,6 +30,10 @@ npm run dev                  # buka http://localhost:3000
 | `npm run build`| Build produksi                            |
 | `npm run start`| Menjalankan hasil build produksi          |
 | `npm run lint` | ESLint                                    |
+| `npm test`     | Vitest (unit + route + integrasi*)        |
+
+\* Uji integrasi butuh Postgres lokal (`TEST_DATABASE_URL`, lihat `supabase/README.md`);
+tanpa env itu suite integrasi di-skip otomatis.
 
 ### Variabel Lingkungan
 
@@ -44,6 +48,56 @@ Salin `.env.example` ke `.env.local` dan isi nilai dari Dashboard Supabase
 
 Build tetap berhasil tanpa env terisi — nilai env baru dibaca saat klien
 Supabase benar-benar dipakai (lihat `src/lib/supabase.ts`).
+
+## API — `POST /api/submit-survey`
+
+Endpoint batch submit (BETE-7). Seluruh state eksperimen dikirim sekali di
+langkah terakhir (Demografi) dan disimpan via RPC `submit_survey` dalam **satu
+transaksi** (`participants` → `sessions` → `case_logs` × 14 → `survey_results`).
+Validasi ketat pakai zod (`src/lib/submit-survey.ts`); tulisan memakai service
+role di server saja.
+
+**Kontrak respons:**
+
+| Status | Body | Arti |
+|---|---|---|
+| `200` | `{ status: "created", sessionId, participantId }` | Submit baru berhasil tersimpan. |
+| `200` | `{ status: "already_submitted", sessionId, participantId }` | Idempoten — submit ulang dengan `participantId` sama tidak menduplikasi baris (aman untuk retry/refresh/timeout auto-submit). |
+| `400` | `{ error, details: [{ path, message }] }` | Payload invalid/tampered; tidak ada insert yang dieksekusi. |
+| `500` | `{ error }` | Kesalahan internal (pesan umum; detail di log server). |
+
+**Bentuk payload** (JSON, camelCase — detail validasi di `src/lib/submit-survey.ts`):
+
+```jsonc
+{
+  "sessionData": {
+    "participantId": "uuid-v4-dari-login",  // kunci idempotensi: satu sesi per partisipan
+    "treatmentGroupId": 2,                   // 1–4 (random assignment)
+    "globalTimeRemaining": 1725,             // 0–2400 detik saat submit
+    "currentStep": 5                         // opsional; tidak disimpan
+  },
+  "caseLogs": [                              // TEPAT 14 entri, caseId 1–14 sekali masing-masing
+    { "caseId": 1, "durationSeconds": 45, "isSaved": true, "rank": 3 },
+    { "caseId": 2, "durationSeconds": 0, "isSaved": false, "rank": null }
+  ],
+  "recommendations": {
+    "knowHowFee": 250000000, "entertainment": 150000000,
+    "maintenance": 300000000, "marketing": 125000000,
+    "confidenceLevel": 85                    // 0–100
+  },
+  "questionnaire": { "q1": "...", "q2": "...", "q3": "..." },
+  "demographics": {
+    "username": "budi",                      // dari login (kolom NOT NULL)
+    "age": 28, "gender": "Laki-laki", "education": "S1",
+    "affiliation": "KAP Sejahtera",          // dari form demografi (kolom NOT NULL)
+    "phoneNumber": "081234567890"            // format Indonesia: 08xx/62xx/+62xx
+  }
+}
+```
+
+Catatan kontrak: `rank` unik 1–14 (boleh `null` untuk kasus belum diranking);
+`sessionId` tidak ada di payload — server menurunkan identitas sesi dari
+`participantId` (lihat `supabase/README.md`).
 
 ## Struktur Folder
 

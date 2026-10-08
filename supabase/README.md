@@ -1,6 +1,6 @@
 # Supabase — Skema Database Eksperimen
 
-Skema awal (migrasi `0001_init.sql`) untuk aplikasi eksperimen pengambilan keputusan pajak (BETE-5): 4 tabel, index pada semua FK dan kolom filter, serta RLS default-deny.
+Skema awal (migrasi `0001_init.sql`) untuk aplikasi eksperimen pengambilan keputusan pajak (BETE-5): 4 tabel, index pada semua FK dan kolom filter, serta RLS default-deny. Migrasi `0002_submit_survey_rpc.sql` (BETE-7) menambahkan RPC transaksional untuk endpoint `/api/submit-survey`.
 
 ## Ringkasan Tabel
 
@@ -73,13 +73,37 @@ docker run -d --name pg-experiment -e POSTGRES_PASSWORD=postgres postgres:16
 
 # 2. Salin dan terapkan migrasi
 docker cp supabase/migrations/0001_init.sql pg-experiment:/tmp/
+docker cp supabase/migrations/0002_submit_survey_rpc.sql pg-experiment:/tmp/
 docker exec pg-experiment psql -U postgres -f /tmp/0001_init.sql
+docker exec pg-experiment psql -U postgres -f /tmp/0002_submit_survey_rpc.sql
 
 # 3. Cek hasil (opsional)
 docker exec pg-experiment psql -U postgres -c "\dt public.*"
 ```
 
+> Uji integrasi endpoint memakai Postgres lokal yang sama — lihat `tests/submit-survey.integration.test.ts`:
+> `TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres npm test`.
+
 > Tidak memakai Supabase CLI? Cara di atas cukup — skema ini SQL murni tanpa ekstensi, cocok untuk Supabase (PostgreSQL 15+). Untuk project Supabase sungguhan, file migrasi yang sama bisa diterapkan via `supabase db push`.
+
+## RPC `submit_survey` (migrasi 0002, BETE-7)
+
+Endpoint `POST /api/submit-survey` menyimpan seluruh state eksperimen lewat **satu panggilan RPC** = satu transaksi Postgres: `participants` → `sessions` → `case_logs` (bulk 14 baris) → `survey_results`. Gagal di tengah jalan = rollback penuh, tidak ada partial insert.
+
+**Idempoten:** `sessions` punya constraint `UNIQUE (participant_id)` — satu sesi eksperimen per partisipan. Submit ulang (refresh, timeout auto-submit, retry setelah error) dengan `participantId` yang sama mendeteksi konflik, tidak menulis apa pun, dan mengembalikan status `already_submitted`. Race submit ganda simultan juga aman: yang kalah menunggu unique index sampai pemenang commit.
+
+| Contract | Nilai |
+|---|---|
+| Argumen | `p_payload jsonb` — bentuknya payload state frontend (BETE-2), tervalidasi zod di `src/lib/submit-survey.ts` |
+| Return | `{ "status": "created" \| "already_submitted", "sessionId", "participantId" }` |
+| Eksekusi | hanya role `service_role` (REVOKE from public, GRANT to service_role) |
+
+Keputusan turunan yang dicatat di migrasi:
+
+- `sessionData` tidak membawa `sessionId` — identitas sesi diturunkan dari `participantId` via `UNIQUE (participant_id)` (satu login = satu run).
+- `start_time` diturunkan dari `globalTimeRemaining`: timer wall-clock beranggaran 2400 s, jadi `start_time ≈ waktu submit − (2400 − sisa detik)`.
+- `is_completed = true` saat submit (timer berhenti ketika submit berhasil).
+- Index parsial unik `case_logs_session_rank_unique` pada `(session_id, rank_assigned) WHERE rank_assigned IS NOT NULL` — peringkat 1–14 unik per sesi (rank tetap boleh kosong untuk auto-submit belum lengkap).
 
 ## Catatan RLS (Row Level Security)
 
